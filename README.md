@@ -1,4 +1,4 @@
-# Vault + Consul example of Vagrant
+# Vault + Consul example via Vagrant
 
 ## Prerequisite
 - Vagrant Installed : https://www.vagrantup.com
