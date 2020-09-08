@@ -1,0 +1,121 @@
+---
+- hosts: all
+  vars:
+    service_file: |
+      [Unit]
+      Description=Vault Service Discovery Agent
+      Documentation=https://www.vaultproject.io/
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=vault
+      Group=vault
+      ExecStart=/usr/bin/vault server -config=/etc/vault.d/vault.hcl
+
+      ExecReload=/bin/kill -HUP $MAINPID
+      KillSignal=SIGINT
+      TimeoutStopSec=5
+      Restart=on-failure
+      SyslogIdentifier=vault
+
+      [Install]
+      WantedBy=multi-user.target
+  tasks:
+    - name: Add an Apt signing key, uses whichever key is at the URL
+      apt_key:
+        url: https://apt.releases.hashicorp.com/gpg
+        state: present
+
+    - name: Work out the distribution
+      command: lsb_release -sc
+      register: result
+
+    - name: Add Vault Repo
+      apt_repository:
+        repo: deb [arch=amd64] https://apt.releases.hashicorp.com {{ result.stdout }} main
+        state: present
+
+    - name: Update apt
+      apt:
+        update_cache: yes
+        force_apt_get: yes
+        cache_valid_time: 3600
+
+    - name: Install packages
+      apt:
+        pkg:
+        - wget
+        - curl
+        - ca-certificates
+        - apt-transport-https
+        - unzip
+        - ufw
+        - jq
+        - vault
+
+    - name: Allow tcp port UFW
+      ufw:
+        rule: allow
+        port: '{{ item }}'
+        proto: tcp
+      with_items:
+        - "22"
+        - "8200"
+
+    - name: Allow udp port UFW
+      ufw:
+        rule: allow
+        port: '{{ item }}'
+        proto: udp
+      with_items:
+        - "8200"
+
+    - name: Update Consul Address
+      replace:
+        path: /tmp/server.hcl
+        regexp: 'CONSUL_ADDR'
+        replace: '{{ consul_addr }}'
+
+    - name: Add Group
+      group:
+        name: vault
+        state: present
+      
+    - name: Add User
+      user:
+        name: vault
+        shell: /bin/bash
+        group: vault
+        state: present
+
+    - name: Create a directory
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: vault
+        group: vault
+      loop:
+        - /etc/vault.d
+
+    - name: Move config file
+      copy:
+        src: /tmp/server.hcl
+        dest: /etc/vault.d/vault.hcl
+        owner: vault
+        group: vault
+        mode: '0644'
+
+    - name: Create service
+      copy:
+        dest: /etc/systemd/system/vault.service
+        content: '{{ service_file }}'
+
+    - name: Consul Service Enable
+      service:
+        name: vault
+        state: started
+        enabled: yes
+        daemon-reload: yes

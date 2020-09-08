@@ -1,0 +1,113 @@
+---
+- hosts: all
+  vars:
+    service_file: |
+      [Unit]
+      Description=Consul Service Discovery Agent
+      Documentation=https://www.consul.io/
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=consul
+      Group=consul
+      ExecStart=/usr/local/bin/consul agent -config-dir=/etc/consul.d
+
+      ExecReload=/bin/kill -HUP $MAINPID
+      KillSignal=SIGINT
+      TimeoutStopSec=5
+      Restart=on-failure
+      SyslogIdentifier=consul
+
+      [Install]
+      WantedBy=multi-user.target
+  tasks:
+    - name: Update apt
+      apt:
+        update_cache: yes
+        force_apt_get: yes
+        cache_valid_time: 3600
+
+    - name: Install packages
+      apt:
+        pkg:
+        - wget
+        - curl
+        - ca-certificates
+        - apt-transport-https
+        - unzip
+        - ufw
+        - jq
+
+    - name: Allow tcp port UFW
+      ufw:
+        rule: allow
+        port: '{{ item }}'
+        proto: tcp
+      with_items:
+        - "22"
+        - "8600"
+        - "8500"
+        - "8301"
+        - "8302"
+        - "8300"
+
+    - name: Allow udp port UFW
+      ufw:
+        rule: allow
+        port: '{{ item }}'
+        proto: udp
+      with_items:
+        - "8600"
+        - "8301"
+        - "8302"
+
+    - name: Unarchive Consul
+      unarchive:
+        src: https://releases.hashicorp.com/consul/{{ version }}/consul_{{ version }}_linux_amd64.zip
+        dest: /usr/local/bin/
+        remote_src: yes
+
+    - name: Add Group
+      group:
+        name: consul
+        state: present
+      
+    - name: Add User
+      user:
+        name: consul
+        shell: /bin/bash
+        group: consul
+        state: present
+
+    - name: Create a directory
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: consul
+        group: consul
+      loop:
+        - /var/lib/consul
+        - /etc/consul.d
+
+    - name: Move config file
+      copy:
+        src: /tmp/server.hcl
+        dest: /etc/consul.d/consul.hcl
+        owner: consul
+        group: consul
+        mode: '0644'
+
+    - name: Create service
+      copy:
+        dest: /etc/systemd/system/consul.service
+        content: '{{ service_file }}'
+
+    - name: Consul Service Enable
+      service:
+        name: consul
+        state: started
+        enabled: yes
+        daemon-reload: yes
