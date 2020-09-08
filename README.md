@@ -2,6 +2,12 @@
 
 ## Prerequisite
 - Vagrant Installed : https://www.vagrantup.com
+- Virtual Box Installed : https://www.virtualbox.org
+
+## RUN
+```bash
+$ vagrant up --provision
+```
 
 ## Config
 
